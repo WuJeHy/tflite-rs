@@ -201,7 +201,10 @@ fn prepare_tensorflow_library() {
         println!("cargo:rustc-link-lib={}=tensorflow-lite", static_dynamic);
         println!("cargo:rerun-if-changed={}", lib_dir);
     }
-    println!("cargo:rustc-link-lib=dylib=pthread");
+    #[cfg(not(feature = "android"))]
+    {
+        println!("cargo:rustc-link-lib=dylib=pthread");
+    }
     println!("cargo:rustc-link-lib=dylib=dl");
 }
 
@@ -248,8 +251,17 @@ fn import_tflite_types() {
         .clang_arg(format!("-I{submodules_str}/tensorflow"))
         .clang_arg(format!("-I{submodules_str}/downloads/flatbuffers/include"))
         .clang_arg("-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK")
-        .clang_arg("-DFLATBUFFERS_POLYMORPHIC_NATIVETABLE")
-        .clang_arg("-x")
+        .clang_arg("-DFLATBUFFERS_POLYMORPHIC_NATIVETABLE");
+
+    #[cfg(feature = "android")] let bindings = {
+        let ndk_home = env::var("NDK_HOME").expect("Unable to get NDK_HOME");
+
+        bindings.clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/"))
+            .clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/"))
+            .clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/x86_64-linux-android/"))
+    };
+
+    let bindings = bindings.clang_arg("-x")
         .clang_arg("c++")
         .clang_arg("-std=c++11")
         // required to get cross compilation for aarch64 to work because of an issue in flatbuffers
@@ -293,10 +305,18 @@ fn import_stl_types() {
         .derive_partialeq(true)
         .derive_eq(true)
         .clang_arg("-x")
-        .clang_arg("c++")
+        .clang_arg("c++");
+
+    #[cfg(feature = "android")] let bindings = {
+        let ndk_home = env::var("NDK_HOME").expect("Unable to get NDK_HOME");
+
+        bindings.clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/"))
+            .clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/"))
+            .clang_arg(format!("-I{ndk_home}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/x86_64-linux-android/"))
+    };
+    let bindings = bindings
         .clang_arg("-std=c++14")
-        .clang_arg("-fms-extensions")
-        .formatter(Formatter::Rustfmt)
+        .clang_arg("-fms-extensions").formatter(Formatter::Rustfmt)
         .generate()
         .expect("Unable to generate STL bindings");
 
@@ -385,7 +405,7 @@ cpp! {{{{
 
     #[allow(non_snake_case)]
     for (cpp_type, rust_type, RustType) in vector_types {
-        writeln!(&mut file, "{}\n", &VectorPrimitiveImpl { cpp_type, rust_type, RustType },)?;
+        writeln!(&mut file, "{}\n", &VectorPrimitiveImpl { cpp_type, rust_type, RustType }, )?;
     }
 
     #[derive(BartDisplay)]
